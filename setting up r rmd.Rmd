@@ -1,0 +1,58 @@
+---
+title: "Setting Up R Assignment"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+```{r}
+library("ISLR")
+```
+#ISLR package has been installed using install.packages("ISLR")
+#calling the library using command library("ISLR") and activating the installed ISLR package
+
+```{r}
+summary(Carseats)
+```
+#Printing out the summary of carseats dataset
+
+```{r}
+nrow(Carseats)
+```
+#printing out the count of rows that are present in the carseats dataset overall
+```{r}
+max(Carseats$Advertising)
+```
+#determining the max value in the advertising attribute in carseats dataset
+#
+```{r}
+IQR(Carseats$Price)
+```
+#printing out the Interquartile Range of the price attribute
+
+
+
+```{r}
+library(ggplot2)
+ggplot(Carseats)+
+  aes(
+    x = Price,
+    y = Sales
+  )+
+  geom_point(shape="square", size=1.4)+theme_minimal()
+```
+
+#Plotting the sales against the price using ggplot
+
+#It can be found from the plot that
+#x and y that is price and sales variables of carseats dataset have negative or inverse relationship
+#There is a linear relationship between two variables x and y 
+#It can also be seen that the points are scattered and are not too close which indicates that the relationship between the variables is not too strong.
+```{r}
+cor(Carseats$Price, Carseats$Sales)
+```
+#Printing out the correlation of two attributes price and sales
+#The calculated correlation value of two attributes price and sales is -0.4449507 which suggests that the two attributes are negatively correlated.
+
