@@ -1,0 +1,385 @@
+---
+title: "FINAL PROJECT"
+author: "Group-3"
+date: "2022-12-10"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Business problem
+Most telecom companies suffer from voluntary churn. Churn rate has strong impact on the life time 
+value of the customer because it affects the length of service and the future revenue of the company. 
+For example if a company has 25% churn rate then the average customer lifetime is 4 years; similarly a 
+company with a churn rate of 50%, has an average customer lifetime of 2 years. It is estimated that 75 
+percent of the 17 to 20 million subscribers signing up with a new wireless carrier every year are coming 
+from another wireless provider, which means they are churners. Telecom companies spend hundreds of 
+dollars to acquire a new customer and when that customer leaves, the company not only loses the 
+future revenue from that customer but also the resources spend to acquire that customer. Churn erodes 
+profitability. 
+
+#Approaches adapted by telecom companies to address churn.
+Untargeted and targeted aproach.
+
+In this project, we will be 
+working as a part of a team to use historical data from ACB Wireless Inc. to build a model that can 
+predict/identify their customers who are likely to churn. 
+
+```{r, warning=FALSE, message=FALSE, include=FALSE}
+library(caret)
+library(rattle)
+library(dplyr)
+library(ggcorrplot)
+library(party)
+library(rpart)
+library(rpart.plot)
+library(class)
+library(pROC)
+library(tidyr)
+library(mice)
+library(tidyverse)
+library(ranger)
+library(ggplot2)
+
+```
+
+
+#### Importing  the dataset
+```{r,message=FALSE}
+churn.train_data <- read.csv("/Users/ELMYLUKA/Desktop/MS BA/Business Analytics/Assignment-4/Churn_Train.csv")
+
+#Analysing the data
+
+str(churn.train_data)
+glimpse(churn.train_data)
+
+#Summary of the dataset
+summary(churn.train_data)
+```
+
+
+
+##transforming categorical variables to numeric.
+
+```{r}
+churn.train_data$state <- as.factor(churn.train_data$state)
+churn.train_data$area_code <- as.factor(churn.train_data$area_code)
+churn.train_data$international_plan <- as.factor(churn.train_data$international_plan)
+churn.train_data$voice_mail_plan <- as.factor(churn.train_data$voice_mail_plan)
+churn.train_data$churn <- as.factor(churn.train_data$churn)
+churn_true  <- subset(churn.train_data, churn.train_data$churn == "yes")
+churn_false <- subset(churn.train_data, churn.train_data$churn == "no")
+```
+
+#churn count number of yes/no
+```{r}
+churn_count_number<-table(churn.train_data$churn)
+churn_count_number
+```
+
+#examining the skewness and distribution of each variable in the dataset.
+
+```{r}
+churn.train_data[, 6:19] %>%
+  gather(key = Variable, value = Value) %>%
+  ggplot() +
+  geom_histogram(aes(x = Value), fill = "light green") +
+  facet_wrap(~Variable, scales='free') +
+  theme_classic() +
+  theme(aspect.ratio = 0.5, axis.title = element_blank(), panel.grid = element_blank())
+
+```
+We can determine from the output that there is a bell curve distribution of data or variables for the majority of the data.It is also an observation that "total day minutes" and total evening minutes" have a tiny percentage or sizeable quantity of outliers. 
+An other observation determined is that “Customer_Service_calls” has an irregular skewness.
+
+#Determining the number of customers from the dataset.
+
+```{r}
+churn_count_number
+```
+
+```{r}
+barplot(churn_count_number,xlab ="Churn",ylab="Count" ,col = "purple" ,main = "Total number of customers(CHURN DATASET)")
+```
+It can be determined from the above graph that among the customers, 483 customers have switched to other providers while the remaining 2850 of them have decided to stay. 
+
+#Determing the number of customers as per the States
+
+
+```{r}
+count_state<-churn_true %>% group_by(state) %>% summarise(count_churn_state=n())
+churn_state <- churn.train_data %>%group_by(churn.train_data$state, churn.train_data$churn) %>% summarise(count = n())
+
+```
+## "summarise()" function has grouped output by ’Churn_Data$state’. Therefore we can override using the ‘.groups‘ argument.
+```{r}
+ggplot(count_state) +
+  aes(x = state, weight = count_churn_state) +
+  geom_bar(width=0.5, position = position_dodge(width=0.5), fill = "#FFB6C1") + scale_x_discrete(guide = guide_axis(n.dodge=2))+
+ labs(x = "State", y = "Count", title = "CHURN   RATE   FOR    EACH    STATE")+theme_light()
+```
+
+It is determined from the graph that Maryland, New Jersey, Michigan and Texas are the states with high churn rates. 
+
+#Distributing the dataset by the Total day charges.
+
+```{r}
+ggplot(churn.train_data) +
+  aes(x = churn, y = total_day_charge, fill = churn) +
+  geom_boxplot(shape = "square") +
+  scale_fill_manual(breaks = churn.train_data$churn,
+                    values = c("yellow", "light blue"))+ labs(x = "Churn", y = "total_day_charge",title = "CHURN  DATA  FOR  TOTAL  DAY   CHARGE")
+  theme_minimal()+
+  theme(plot.title = element_text(size = 16L,
+                                  face = "bold", hjust = 0.5))
+
+```
+
+It is observed from the box plot graph that customers having the day charge between 30-40 are more inclined towards cancelling their services with the current providers and shift to a different provider.
+
+#Determing the customers who had the international package and shifted to another provider based on the dataset.
+
+```{r}
+ggplot(data = churn.train_data, aes(x = international_plan, y = ..count.., fill = churn)) +
+  scale_fill_manual(breaks = churn.train_data$churn,
+                    values = c("yellow", "light blue"))+
+  geom_bar(stat = "count") +
+stat_count(geom = "text", colour = "blue", size = 4.5,
+aes(label = ..count..),position=position_stack(vjust=0.5))
+```
+
+
+```{r}
+churn_true %>%
+  group_by(international_plan) %>%
+  select(international_plan) %>%
+  dplyr:: summarise("Churn Count" =n(), "Percent" = n()/483)
+```
+The results depict the percentage of customers who are a part of the international plan and have moved to another provider i.e. 28% of the customers are likely to churn.
+
+#Determining the customers who churned based on the number of customer service calls.
+
+```{r}
+ggplot(churn.train_data) +
+  aes(x = churn, y = number_customer_service_calls, fill = churn) +
+  geom_boxplot(shape = "circle") +
+    scale_fill_manual(breaks = churn.train_data$churn,
+                    values = c("yellow", "light blue"))+
+  labs(title = "CHURN   DATA  FOR  NUMBER  OF  CUSTOMER  SERVICE  CALLS") +
+  theme_light() +
+  theme(plot.title = element_text(size = 14L, face = "bold", hjust = 0.5))
+```
+
+```{r}
+ churn_true %>%filter(number_customer_service_calls >= 1 & number_customer_service_calls <= 4) %>%tally()/483
+```
+The box plot above depicts that the customers who have reached out to the customer services more than 2-4 times are likely to move to other providers. 
+We can interpret that the customers who have churned are approximately 64% and the reason being, them reaching out to the customer service 1-4 times. 
+
+#Data Cleaning
+
+```{r}
+#Sorting and imputing the missing values using mice package. 
+set.seed(111)
+#As per mice, total_night_charge and total_intl_charge are multi-collinear variables.
+#Therefore mice will not impute missing values for these columns.
+churn.train_data$total_night_charge[1] <- 2
+churn.train_data$total_intl_charge[1] <- 0.5
+mice_model <- mice(churn.train_data[, -20], method="rf")
+```
+
+```{r}
+#mice imputation using random forests.
+mice_output <- complete(mice_model) 
+# Generating the complete data.
+anyNA(mice_output)
+```
+```{r}
+churn.train_data_imputed <- mutate(mice_output,churn=churn.train_data$churn)
+summary(churn.train_data)
+```
+
+```{r}
+str(churn.train_data)
+churn_yes<-churn.train_data_imputed %>% filter(churn=='yes')
+correlation_churn_cust<- cor(churn_yes[, 6:19])
+```
+
+#We will be using ggplot to represent the correlation between the variables where churn is equal to yes. 
+```{r}
+ggcorrplot(correlation_churn_cust, method = "square", type = "lower", ggtheme = theme_linedraw)
+```
+ As per the ggplot, it can be depicted that for the people who have churned, there lies a significant negative correlation  between total_day_charge and the number of customer_ service_calls and also total_international_charges and total_evening_charges.
+The statistics show that customer service calls have a greater churn rate than other calls since the charges are higher.
+ 
+
+#Prediction Model Selection
+Using a predictive model based on regression and decision tree models. It is possible to demonstrate the influence of various variables and the importance of each in foreseeing the outcome of the dependent variable.
+
+A logistic regression model is preferred to others since the dependent variable (target variable) in this data is categorical and also classification being our prime objective . While in a linear regression model, performance probability may be negative or more than 1, making it ineffective for predicting a binomial feature.
+The best result for this model is a likelihood of possibilities that falls between 0 and 1 i.e. logistic regression.
+
+For our analysis we will be using both the models and select the best among the two to be the final model. 
+Using Logistic Regression and Decision Tree Models to determine Predictive Ability:
+Before choosing a model, the following procedures were followed:
+- The dataset has been divided into training and validation sets to prevent overfitting the model.
+-Constructing a logistic regression model and forecasting the outcomes from the validation set.
+-Using a confusion matrix to confirm the validity of the model.
+-Making a decision tree model and predict the results of the validation set.
+-Validating the model's performance with a confusion matrix.
+-Considering the results of both models and selecting the best one.
+
+#Data Partitioning
+```{r}
+set.seed(111)
+index<- createDataPartition(churn.train_data_imputed $churn,p=0.8,list=FALSE)
+train_data<-churn.train_data_imputed [index,]
+valid_data <- churn.train_data_imputed [-index,]
+```
+#Building a Logistic Regression model:- 
+Logistic regression is a statistical analytic approach for predicting a binary outcome, such as yes or no.
+
+```{r}
+set.seed(222)
+log_model <- glm(churn~.,data=train_data ,family = "binomial" ) #summary(Logistic Model)
+predict_valid<-predict(log_model,valid_data,type="response")
+head(predict_valid)
+```
+
+```{r}
+result_check<-ifelse(predict_valid > 0.5,'yes','no')
+#Accuracy Check
+error<-mean(result_check!=valid_data$churn)
+accuracy <-1- error
+print(accuracy)
+```
+
+```{r}
+plot.roc(valid_data$churn,predict_valid)
+```
+#Using confusion matrix for the logistic regression model.
+
+```{r}
+set.seed(333)
+log_confusion_matrix <- confusionMatrix(as.factor(result_check),as.factor(valid_data$churn))
+log_confusion_matrix
+```
+Results produced from the confusion matrix :- 
+#1.Accuracy :- 84.68% 
+#2. Sensitivity :- 96.32% 
+#3. Specificity:- 15.62%
+
+
+#Building a Decision Tree Model 
+Decision tree analysis is basically producing a tree-shaped diagram to chart out a course of action or a statistical probability analysis.
+
+```{r}
+set.seed(444)
+decisiontree_model<- rpart(churn ~ .,data=train_data,method = 'class')
+# Show the variable importance
+#DT_model$variable.importance
+# Show the split for variable
+head(decisiontree_model$splits)
+```
+
+```{r}
+#Predicting the probability
+prob_decisiontree <- predict(decisiontree_model, newdata = valid_data, type = "prob")
+#determining AUC Value
+roc(valid_data$churn,prob_decisiontree[,2])
+```
+Using a Confusion Matrix for the Decision Tree Model.
+
+```{r}
+set.seed(555)
+decisiontree_class<- predict(decisiontree_model, newdata = valid_data, type = "class")
+confusionMatrix(as.factor(decisiontree_class),as.factor(valid_data$churn))
+```
+From the Confusion Matrix, the following conclusions have been made :- 
+#1. Accuracy :- 91.44% 
+#2. Sensitivity :- 97.37% 
+#3. Specificity:- 56.25%
+
+#Choosing the optimal model
+
+On the comparison of the two models, Decision Tree Model is interpreted the best model to put in use as it has higher accuracy than the logistical regression model.
+
+Though the Sensitivities of both the models are almost equal, Decision Tree has a higher specificity. Therefore, Decision Tree Model is the right and optimal model to use.
+
+#Predicting the churn using the test data and the decision tree algorithm for the final model analysis. 
+
+```{r}
+# After the accuracy has been tested for the validation and training data we can use the entire data to build the final model. Actual dataset can be used to predict the churn only after testing for accuracy.
+set.seed(666)
+ABC_model<- rpart(churn ~ .,data= churn.train_data_imputed,method = 'class')
+```
+
+```{r}
+#Model Splits.
+head(ABC_model$splits)
+#Plotting Decision Tree
+fancyRpartPlot(ABC_model)
+rpart.plot(ABC_model, cex=0.5)
+```
+
+```{r}
+#Probability Prediction(decision tree)
+decisiontree_prob <- predict(ABC_model, newdata = churn.train_data_imputed, type = "prob")
+#Determining the AUC Value
+roc(churn.train_data_imputed$churn,decisiontree_prob[,2])
+```
+
+#Prediction of the Test Data
+
+```{r}
+set.seed(777)
+load("~/Desktop/MS BA/Business Analytics/Assignment-4/Customers_To_Predict.RData")
+
+count(Customers_To_Predict)
+summary(Customers_To_Predict)
+
+
+#Checking NA Values
+colMeans(is.na(Customers_To_Predict))
+
+prob_churn <- predict(ABC_model,Customers_To_Predict,type = "prob")
+head(prob_churn)
+
+predict_churn <- predict(ABC_model,Customers_To_Predict,type = "class")
+head(predict_churn)
+ predict_churn<- as.data.frame(predict_churn)
+summary(predict_churn)
+```
+
+```{r}
+ggplot(predict_churn) +
+ aes(x = predict_churn) +
+ geom_bar(fill = "red")+
+ labs(x = "Customers Not Churning/Churning",
+ y = "Number of Customers", title = "Number of Customers likely to Churn") +
+ theme_minimal() +
+ theme(plot.title = element_text(size = 14L,
+ face = "bold", hjust = 0.5), axis.title.y = element_text(size = 14L, face = "bold"), axis.title.x = element_text(size = 14L,face = "bold"))
+```
+
+#From the above graph the following has been depicted.
+
+Predict_Churn :- No :- 1460 Yes :- 140
+
+#From the analysis of the data,the following are the conclusions:- 
+#- Customers are more inclined to switch to another provider if they have paid more than $30 in daily fees.
+#- Customers will undoubtedly go to another supplier if they have to pay international day charges. This is evident from the data above, which indicates that about 28% of clients left the company.
+#-The results show that the company has dissatisfactory customers, and it is because of these results that we have concluded that customers who have called customer service 2-4 times have left the company.
+#-States with a higher rate of churn include Maryland, New Jersey, Michigan, and Texas.
+
+#Recommendations to reduce customer Churn rate :- 
+#- Enhancing client satisfaction through action.
+#- Using a competitive pricing strategy. 
+#- In the states with a higher churn rate, conducting a thorough market analysis.
+
+
